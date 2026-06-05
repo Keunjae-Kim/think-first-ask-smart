@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scaffolded Learning Chatbot Training Example",
+  "type": "object",
+  "required": [
+    "id",
+    "domain",
+    "learner_level",
+    "task_type",
+    "student_question",
+    "prior_knowledge_prompt",
+    "student_prior_response",
+    "analysis",
+    "scaffold_strategy",
+    "scaffold_response",
+    "student_retry",
+    "final_synthesis",
+    "answer_release_level",
+    "tags"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "educational_technology",
+        "learning_sciences",
+        "research_methodology_in_education"
+      ]
+    },
+    "learner_level": {
+      "type": "string",
+      "enum": [
+        "undergraduate",
+        "graduate",
+        "unknown"
+      ]
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "concept_explanation",
+        "problem_solving",
+        "writing_support",
+        "research_design_support",
+        "article_interpretation",
+        "method_selection",
+        "critique_or_feedback"
+      ]
+    },
+    "student_question": {
+      "type": "string"
+    },
+    "prior_knowledge_prompt": {
+      "type": "string"
+    },
+    "student_prior_response": {
+      "type": "string"
+    },
+    "analysis": {
+      "type": "object",
+      "required": [
+        "known_concepts",
+        "missing_links",
+        "misconceptions",
+        "confidence"
+      ],
+      "properties": {
+        "known_concepts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_links": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "misconceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "scaffold_strategy": {
+      "type": "string",
+      "enum": [
+        "prior_knowledge_activation",
+        "hint",
+        "guiding_question",
+        "conceptual_extension",
+        "conceptual_contrast",
+        "analogy",
+        "partial_explanation",
+        "misconception_repair",
+        "worked_example_fragment",
+        "methodological_decision_tree",
+        "revision_prompt",
+        "final_synthesis"
+      ]
+    },
+    "scaffold_response": {
+      "type": "string"
+    },
+    "student_retry": {
+      "type": "string"
+    },
+    "final_synthesis": {
+      "type": "string"
+    },
+    "answer_release_level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "quality_notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
