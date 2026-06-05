@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Think First, Ask Smart</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="chat-panel" aria-label="Scaffolded learning chat">
+        <header class="topbar">
+          <div>
+            <h1>Think First, Ask Smart</h1>
+            <p id="stateText">Educational technology - Learning sciences - Education research methods</p>
+          </div>
+          <label class="debug-toggle">
+            <input id="debugToggle" type="checkbox" />
+            Debug
+          </label>
+        </header>
+
+        <div id="messages" class="messages" aria-live="polite">
+          <article class="message assistant">
+            <div class="bubble">
+Welcome to Think First, Ask Smart.
+
+This chatbot is designed to help you learn more actively.
+Instead of giving you an immediate final answer, it will first ask what you already know, what you think, or how you would approach the question.
+
+The goal is not to make learning harder.
+The goal is to help you avoid relying too quickly on AI and to strengthen your own thinking.
+
+When you ask a question, be ready to do three things:
+
+1. Explain what you already know.
+2. Share your first guess or reasoning.
+3. Connect your question to learning, educational technology, or research methods when possible.
+
+You do not need to be correct at first.
+Your first attempt helps the chatbot give you better support.
+
+Example questions you may be asked:
+
+"What do you already know about this topic?"
+"How would you explain this in your own words?"
+"What is your initial guess?"
+"How might this relate to learning science or educational technology?"
+"If this were a research question, what evidence would you need?"
+
+The chatbot will guide you step by step, give hints when needed, and help you build a stronger answer after you try first.
+            </div>
+          </article>
+        </div>
+
+        <form id="chatForm" class="composer">
+          <div id="loggingNotice" class="logging-notice hidden">
+            <label class="consent-line">
+              <input id="consentCheckbox" type="checkbox" />
+              I consent to this prototype storing my chat prompts and timing data for research testing.
+            </label>
+            <p id="loggingSummary">
+              Usage logging is currently off. Do not enter personal or sensitive information.
+            </p>
+            <p id="studentIdText" class="student-id"></p>
+          </div>
+          <textarea
+            id="messageInput"
+            rows="2"
+            placeholder="Ask a question, share prior knowledge, retry, or type 'return' to resume a paused topic."
+            autocomplete="off"
+          ></textarea>
+          <button id="sendButton" type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
