@@ -176,8 +176,8 @@ function staticParticipationSupport(text) {
 
 function staticScaffold(text) {
   return languageIsKorean(text)
-    ? `What you already have: 방금 답변에서 출발점이 생겼어요: "${text}"\n\nGeneral background: 이 GitHub Pages 데모는 서버 RAG를 실행하지 않기 때문에 자료 검색 대신 일반 배경 지식 형식만 보여줍니다.\n\nNext scaffold: 지금 아이디어를 조금 더 구체화해봅시다. 이 개념이 "학습자가 정보를 해석하는 방식", "교수자가 지원을 조절하는 방식", 또는 "연구 방법을 선택하는 방식" 중 어디에 더 가까운지 골라보고 이유를 한 문장으로 써볼래요?`
-    : `What you already have: You gave me a starting point: "${text}"\n\nGeneral background: This GitHub Pages demo does not run the server-side RAG layer, so it shows the scaffolded flow without source retrieval.\n\nNext scaffold: Try narrowing your idea. Does this topic mainly involve how learners interpret information, how instructors support learning, or how researchers choose methods? Pick one and explain your reason in one sentence.`;
+    ? `What you already have: 방금 답변에서 출발점이 생겼어요: "${text}"\n\nNext scaffold: 지금 아이디어를 조금 더 구체화해봅시다. 이 주제가 "학습자가 정보를 해석하는 방식", "교수자가 지원을 조절하는 방식", 또는 "연구 방법을 선택하는 방식" 중 어디에 더 가까운지 골라보세요.\n\nMetacognitive check: 그렇게 고른 이유를 한 문장으로 설명해볼래요?`
+    : `What you already have: You gave me a starting point: "${text}"\n\nNext scaffold: Try narrowing your idea. Does this topic mainly involve how learners interpret information, how instructors support learning, or how researchers choose methods?\n\nMetacognitive check: Pick one and explain your reason in one sentence.`;
 }
 
 function staticFinalSynthesis(text) {
