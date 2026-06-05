@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Think First, Ask Smart</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app-shell">
@@ -55,7 +55,7 @@ The chatbot will guide you step by step, give hints when needed, and help you bu
 
         <form id="chatForm" class="composer">
           <div id="loggingNotice" class="logging-notice hidden">
-            <label class="consent-line">
+            <label id="consentLine" class="consent-line">
               <input id="consentCheckbox" type="checkbox" />
               I consent to this prototype storing my chat prompts and timing data for research testing.
             </label>
@@ -74,6 +74,6 @@ The chatbot will guide you step by step, give hints when needed, and help you bu
         </form>
       </section>
     </main>
-    <script src="/app.js" type="module"></script>
+    <script src="app.js" type="module"></script>
   </body>
 </html>
