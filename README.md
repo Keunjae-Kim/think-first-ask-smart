@@ -79,6 +79,16 @@ http://localhost:3000
 
 If the default `node` command is blocked in Codex Desktop, use the bundled Node runtime path from `docs/openai_api_setup.md`.
 
+## Public Static Demo
+
+The GitHub Pages demo shows the scaffolded interaction flow in static demo mode:
+
+```text
+https://keunjae-kim.github.io/think-first-ask-smart/
+```
+
+This public demo does not call OpenAI, run RAG retrieval, or save server-side research logs because GitHub Pages cannot run a private backend or protect API keys. For the full LLM/RAG/logging prototype, run the local browser server above or deploy the server to a backend host.
+
 ## Optional Usage Logging
 
 The browser prototype can save local JSONL logs with student prompts, dwell time, server turn duration, and scaffold diagnosis summaries. Logging is off by default.
