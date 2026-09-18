@@ -3,19 +3,27 @@ const input = document.querySelector("#messageInput");
 const sendButton = document.querySelector("#sendButton");
 const messages = document.querySelector("#messages");
 const stateText = document.querySelector("#stateText");
-const debugToggle = document.querySelector("#debugToggle");
+const startButton = document.querySelector("#startButton");
+const declineButton = document.querySelector("#declineButton");
+let sessionStarted = false;
 const loggingNotice = document.querySelector("#loggingNotice");
 const loggingSummary = document.querySelector("#loggingSummary");
 const consentCheckbox = document.querySelector("#consentCheckbox");
 const studentIdText = document.querySelector("#studentIdText");
 const consentLine = document.querySelector("#consentLine");
 
-const sessionId = crypto.randomUUID();
+function randomId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+const sessionId = randomId();
 const studentId = getOrCreateStudentId();
 const pageLoadedAt = Date.now();
 let lastAssistantAt = pageLoadedAt;
 let turnIndex = 0;
 let staticDemoMode = false;
+let sending = false;
+let configReady = false;
 let loggingConfig = {
   usageLoggingEnabled: false,
   rawTextLoggingEnabled: false,
@@ -33,11 +41,11 @@ function getOrCreateStudentId() {
     const existing = localStorage.getItem(key);
     if (existing) return existing;
 
-    const created = `student-${crypto.randomUUID().slice(0, 8)}`;
+    const created = `student-${randomId()}`;
     localStorage.setItem(key, created);
     return created;
   } catch {
-    return `student-${crypto.randomUUID().slice(0, 8)}`;
+    return `student-${randomId()}`;
   }
 }
 
@@ -55,72 +63,62 @@ function appendMessage(role, text, extraClass = "") {
   return article;
 }
 
-function updateDebugVisibility() {
-  document.querySelectorAll(".message.debug").forEach((node) => {
-    node.classList.toggle("hidden", !debugToggle.checked);
-  });
-}
-
-function summarizeDebug(debug) {
-  return debug
-    .map((item) => {
-      if (item.evaluation) {
-        return `${item.label}: ${item.evaluation.sensemaking_level} / ${item.evaluation.question_content_type} / primary=${item.evaluation.primary_scaffold_family} / secondary=${item.evaluation.secondary_scaffold_families?.join(", ") || "none"} / modeling=${item.evaluation.modeling?.dose || "none"}`;
-      }
-      if (item.decision) {
-        return `${item.label}: ${item.decision.intent}`;
-      }
-      if (item.grounding) {
-        const sources = item.grounding.retrieved_sources || [];
-        const sourceText = sources.length
-          ? ` / sources=${sources.map((source) => source.title || source.source_path).join("; ")}`
-          : "";
-        return `${item.label}: ${item.grounding.grounding_mode} / evidence=${item.grounding.evidence_strength}${sourceText}`;
-      }
-      return item.label || "Debug";
-    })
-    .join("\n");
-}
-
 function setState(summary = {}) {
   const activeQuestion = summary.activeQuestion ?? summary.active_question;
   const pausedTopics = summary.pausedTopics ?? summary.paused_topics;
-  const active = activeQuestion ? `Active: ${activeQuestion}` : "No active topic";
+  const active = activeQuestion ? `Current topic: ${activeQuestion}` : "A space for thoughtful learning";
   const paused = pausedTopics ? ` - Paused: ${pausedTopics}` : "";
-  const stage = summary.stage ? ` - ${summary.stage}` : "";
-  stateText.textContent = `${active}${stage}${paused}`;
+  stateText.textContent = `${active}${paused}`;
+  const step = summary.stage === "waiting_for_prior_knowledge" ? "prior" : summary.stage === "waiting_for_retry" ? "retry" : "question";
+  document.querySelectorAll("[data-step]").forEach((node) => {
+    if (node.dataset.step === step) node.setAttribute("aria-current", "step");
+    else node.removeAttribute("aria-current");
+  });
+  document.querySelector("#inputLabel").textContent = {question: "Your question", prior: "Your current thinking", retry: "Your revised thinking"}[step];
+  input.placeholder = {question: "What would you like to explore?", prior: "What do you know or suspect so far?", retry: "How has your thinking changed?"}[step];
 }
 
 function updateLoggingNotice() {
-  if (staticDemoMode) {
-    loggingNotice.classList.remove("hidden");
-    consentLine.classList.add("hidden");
-    loggingSummary.textContent =
-      "Static GitHub Pages demo mode: this page shows the scaffolded interaction flow without OpenAI, RAG retrieval, server logs, or persistent research data collection.";
-    studentIdText.textContent = `Anonymous demo student ID: ${studentId}`;
-    return;
+  loggingNotice.classList.toggle("hidden", staticDemoMode || !loggingConfig.usageLoggingEnabled);
+  if (!staticDemoMode && loggingConfig.usageLoggingEnabled) {
+    loggingSummary.textContent = loggingConfig.rawTextLoggingEnabled
+      ? "With your permission, your prompts, chatbot replies, timing data, learning-stage records, and a randomly assigned browser ID will be saved on the research server."
+      : "With your permission, timing data, text-length summaries, learning-stage records, and a randomly assigned browser ID will be saved on the research server.";
+    studentIdText.textContent = "";
   }
-
-  if (!loggingConfig.usageLoggingEnabled) {
-    loggingNotice.classList.add("hidden");
-    return;
-  }
-
-  loggingNotice.classList.remove("hidden");
-  consentLine.classList.remove("hidden");
-  const rawText = loggingConfig.rawTextLoggingEnabled
-    ? "prompts, chatbot responses, and timing data"
-    : "timing data and text length summaries";
-  const consentText = loggingConfig.consentRequired
-    ? "Only checked sessions are logged."
-    : "This prototype is configured to log without the checkbox requirement.";
-  loggingSummary.textContent = `Logging is enabled for ${rawText}. ${consentText} Do not enter personal or sensitive information.`;
-  studentIdText.textContent = `Anonymous student ID: ${studentId}`;
 }
+function updateStartControls() {
+  const needsConsent = !staticDemoMode && loggingConfig.usageLoggingEnabled;
+  startButton.disabled = !configReady || (needsConsent && !consentCheckbox.checked);
+  declineButton.classList.toggle("hidden", !configReady || !needsConsent);
+  document.querySelector("#startStatus").textContent = !configReady ? "Checking session settings..." :
+    staticDemoMode ? "Practice demo: scripted replies. Conversations are not saved." :
+    needsConsent ? "Research logging is optional. Choose how you would like to continue." : "Research logging is off.";
+}
+function startConversation(saveLogs) {
+  if (!configReady) return;
+  if (saveLogs && !staticDemoMode && loggingConfig.usageLoggingEnabled && !consentCheckbox.checked) return;
+  if (!saveLogs) consentCheckbox.checked = false;
+  sessionStarted = true;
+  document.querySelector("#startPanel").classList.add("hidden");
+  form.classList.remove("hidden");
+  lastAssistantAt = Date.now();
+  updateSendButton();
+  input.focus();
+}
+consentCheckbox.addEventListener("change", updateStartControls);
+startButton.addEventListener("click", () => startConversation(true));
+declineButton.addEventListener("click", () => startConversation(false));
 
 async function loadConfig() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch("api/config", { cache: "no-store" });
+    if (location.hostname.endsWith(".github.io") || location.protocol === "file:") {
+      enableStaticDemoMode();
+      return;
+    }
+    const response = await fetch("api/config", { cache: "no-store", signal: controller.signal });
     if (!response.ok) {
       enableStaticDemoMode();
       return;
@@ -134,11 +132,17 @@ async function loadConfig() {
   } catch {
     enableStaticDemoMode();
     updateLoggingNotice();
+  } finally {
+    clearTimeout(timeout);
+    configReady = true;
+    updateStartControls();
+    updateSendButton();
   }
 }
 
 function enableStaticDemoMode() {
   staticDemoMode = true;
+  updateLoggingNotice();
   setState({
     active_question: null,
     stage: "Static demo mode",
@@ -175,9 +179,14 @@ function staticParticipationSupport(text) {
 }
 
 function staticScaffold(text) {
+  if (/cognitive offload|인지적?\s*(?:오프로딩|외주화)/i.test(demoState.activeQuestion || "")) {
+    return languageIsKorean(text)
+      ? "인지적 오프로딩은 기억이나 사고의 일부를 외부 도구에 맡기는 것이에요. 메모로 일정을 기억하는 것과 AI가 쓴 논증을 검토 없이 제출하는 것은 모두 작업을 밖으로 옮기지만, 학습자가 직접 하는 사고의 양은 달라요.\n\n네 상황에서 도구를 쓰더라도 직접 판단해야 할 부분은 무엇일까요?"
+      : "Cognitive offloading means moving some memory or thinking work to an external aid. A reminder can free attention for reasoning; accepting an AI argument without checking it can also replace the reasoning you need to practice.\n\nIn your example, which judgment would still need to be yours?";
+  }
   return languageIsKorean(text)
-    ? `What you already have: 방금 답변에서 출발점이 생겼어요: "${text}"\n\nNext scaffold: 지금 아이디어를 조금 더 구체화해봅시다. 이 주제가 "학습자가 정보를 해석하는 방식", "교수자가 지원을 조절하는 방식", 또는 "연구 방법을 선택하는 방식" 중 어디에 더 가까운지 골라보세요.\n\nMetacognitive check: 그렇게 고른 이유를 한 문장으로 설명해볼래요?`
-    : `What you already have: You gave me a starting point: "${text}"\n\nNext scaffold: Try narrowing your idea. Does this topic mainly involve how learners interpret information, how instructors support learning, or how researchers choose methods?\n\nMetacognitive check: Pick one and explain your reason in one sentence.`;
+    ? `"${text}"라는 생각을 살펴봅시다. 개념을 점검하는 한 가지 방법은 그 개념에 해당하는 사례와 해당하지 않는 사례를 비교하는 거예요. 두 사례의 차이를 찾으면 그 개념의 핵심 조건이 드러납니다.\n\n이 생각이 적용되는 경우와 적용되지 않는 경우를 가르는 차이는 무엇일까요?`
+    : `Let's examine your idea: "${text}". One way to test a concept is to compare an example with a non-example. The difference can reveal a condition the concept depends on.\n\nWhat difference would separate a situation where your idea applies from one where it does not?`;
 }
 
 function staticFinalSynthesis(text) {
@@ -187,11 +196,38 @@ function staticFinalSynthesis(text) {
   demoState.priorResponse = "";
 
   return languageIsKorean(text)
-    ? `Final synthesis: 네 재시도는 "${question}"에 대해 더 구체적인 방향을 만들었어요. 좋은 학습 답변은 정의를 바로 외우기보다, 네가 선택한 관점과 예시를 연결해서 설명하는 방식으로 발전할 수 있습니다.\n\nTransfer check: 이 내용을 처음 듣는 동료에게 설명한다면, 어떤 예시로 시작하겠어요?`
-    : `Final synthesis: Your retry gives "${question}" a clearer direction. A stronger learning answer would connect the concept to the perspective you chose and use a concrete example rather than jumping straight to a polished definition.\n\nTransfer check: If you explained this to a peer seeing it for the first time, what example would you start with?`;
+    ? `"${question}"에 대한 정리는 주장, 예시, 적용 조건을 연결하면 더 명확해져요. 지금 적은 "${text}"를 예시로 사용할 때, 그 사례가 주장을 뒷받침하는 이유와 적용되지 않는 조건을 함께 밝혀주세요. 이 구조는 설명을 정리하는 데 도움이 되지만, 내용의 정확성은 자료와 대조할 필요가 있어요.`
+    : `A useful way to organize your answer to "${question}" is to connect a claim, an example, and its conditions. With "${text}" as your example, make the connection to your claim explicit and note where it might not apply. This structure helps organize an explanation; its factual accuracy still needs to be checked against your sources.`;
+}
+
+function demoRedirect(text) {
+  const normalized = text.trim().toLowerCase();
+  const bypass = /\b(?:just|only)\b.{0,35}\b(?:answer|solution)\b|\b(?:give|tell|show) me (?:the |an )?(?:answer|solution)\b|\bdo (?:it|my homework) for me\b|(?:답|정답)(?:만|을).*?(?:줘|알려|말해)|그냥.*(?:답|풀어)/i.test(normalized);
+  const noAttempt = /^(?:i (?:have no idea|don['’]?t know)|no idea|idk|not sure|모르겠어|몰라요?|잘 모르겠어요?)[.!?\s]*$/i.test(normalized);
+  const unusable = !/[\p{L}\p{N}]/u.test(normalized) || /^(?:asdf\w*|qwer\w*|[ㅋㅎ]+|blah(?:\s+blah)*|whatever|lol|ok|okay|아무말)[.!?\s]*$/i.test(normalized) || /^(.)\1{3,}$/u.test(normalized);
+  if (!bypass && !noAttempt && !unusable) return null;
+  const korean = languageIsKorean(text);
+  if (!demoState.activeQuestion) return korean ? "어떤 주제를 함께 살펴볼까요? 궁금한 질문 하나를 적어주세요." : "What would you like to work on? Share one learning question to get started.";
+  const topic = demoState.activeQuestion;
+  if (bypass) return korean
+    ? `빠르게 답을 알고 싶은 마음은 이해해요. "${topic}"에 대해 맞는 답을 쓸 필요는 없어요. 지금 떠오르는 추측 하나만 말해볼래요?`
+    : `I understand you want a quick answer. You don't need to be right yet. For "${topic}", what is one guess you could make?`;
+  if (noAttempt) {
+    demoState.stage = "waiting_for_retry";
+    return staticScaffold(text);
+  }
+  return korean
+    ? `그 말이 현재 질문과 어떻게 연결되는지 아직 분명하지 않아요. "${topic}"와의 연결을 한 문장으로 말해볼래요?`
+    : `I'm not yet sure how that connects to "${topic}". Can you describe the connection in one sentence?`;
 }
 
 function staticDemoTurn(text) {
+  const redirect = demoRedirect(text);
+  if (redirect) return {
+    messages: [{role: "assistant", text: redirect}],
+    debug: [{label: "Demo turn decision", decision: {intent: "learning_redirect"}}],
+    stateSummary: {active_question: demoState.activeQuestion, stage: demoState.stage, paused_topics: 0},
+  };
   if (isGreeting(text)) {
     return {
       messages: [{ role: "assistant", text: staticGreeting(text) }],
@@ -202,6 +238,11 @@ function staticDemoTurn(text) {
 
   if (!demoState.activeQuestion) {
     demoState.activeQuestion = text;
+    if (/\bi (?:think|believe|tried|assume)\b|제 생각|내 생각|시도했/i.test(text)) {
+      demoState.priorResponse = text;
+      demoState.stage = "waiting_for_retry";
+      return {messages: [{role: "assistant", text: staticScaffold(text)}], debug: [], stateSummary: {active_question: text, stage: demoState.stage, paused_topics: 0}};
+    }
     demoState.stage = "waiting_for_prior_knowledge";
     return {
       messages: [{ role: "assistant", text: staticPriorPrompt(text) }],
@@ -211,7 +252,7 @@ function staticDemoTurn(text) {
   }
 
   if (demoState.stage === "waiting_for_prior_knowledge") {
-    if (/\b(no idea|don't know|not sure|모르|몰라)\b/i.test(text)) {
+    if (/^(?:no idea|i don't know|not sure|모르겠어|몰라)[.!?\s]*$/i.test(text.trim())) {
       return {
         messages: [{ role: "assistant", text: staticParticipationSupport(text) }],
         debug: [
@@ -291,6 +332,8 @@ function clientMetaForTurn(messageCreatedAt) {
 }
 
 async function sendMessage(text) {
+  sending = true;
+  sendButton.textContent = "Responding...";
   const messageCreatedAt = Date.now();
   turnIndex += 1;
   appendMessage("student", text);
@@ -309,15 +352,13 @@ async function sendMessage(text) {
       }
       lastAssistantAt = Date.now();
 
-      if (data.debug?.length) {
-        appendMessage("debug", summarizeDebug(data.debug), debugToggle.checked ? "" : "hidden");
-      }
+  
 
       setState(data.stateSummary);
       return;
     }
 
-    const response = await fetch("/api/chat", {
+    const response = await fetch("api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -342,9 +383,7 @@ async function sendMessage(text) {
     }
     lastAssistantAt = Date.now();
 
-    if (data.debug?.length) {
-      appendMessage("debug", summarizeDebug(data.debug), debugToggle.checked ? "" : "hidden");
-    }
+
 
     setState(data.stateSummary);
   } catch (error) {
@@ -352,7 +391,9 @@ async function sendMessage(text) {
     appendMessage("assistant", error.message, "error");
     lastAssistantAt = Date.now();
   } finally {
-    sendButton.disabled = false;
+    sending = false;
+    sendButton.textContent = "Send message";
+    updateSendButton();
     input.disabled = false;
     input.focus();
   }
@@ -360,18 +401,40 @@ async function sendMessage(text) {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (sending || !sessionStarted) return;
+  if (!configReady) {
+    document.querySelector("#connectionStatus").textContent = "Connecting. Please try again in a moment.";
+    return;
+  }
   const text = input.value.trim();
-  if (!text) return;
+  if (!text) {
+    document.querySelector("#connectionStatus").textContent = "Write a message first.";
+    input.focus();
+    return;
+  }
   input.value = "";
   sendMessage(text);
 });
 
 input.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     form.requestSubmit();
   }
 });
 
-debugToggle.addEventListener("change", updateDebugVisibility);
+
+function updateSendButton() {
+  sendButton.disabled = sending || !sessionStarted;
+  document.querySelector("#connectionStatus").textContent = configReady ? "" : "Connecting...";
+}
+input.addEventListener("input", updateSendButton);
+document.querySelectorAll("[data-question]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (sending) return;
+    input.value = button.dataset.question;
+    updateSendButton();
+    input.focus();
+  });
+});
 loadConfig();
