@@ -145,7 +145,7 @@ export async function logUsageTurn({
     return { logged: false, reason: "usage_logging_disabled" };
   }
 
-  if (logConsentRequired() && !consentGiven) {
+  if (!consentGiven) {
     return { logged: false, reason: "missing_consent" };
   }
 

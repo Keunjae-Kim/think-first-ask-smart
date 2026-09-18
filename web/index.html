@@ -12,68 +12,72 @@
         <header class="topbar">
           <div>
             <h1>Think First, Ask Smart</h1>
-            <p id="stateText">Educational technology - Learning sciences - Education research methods</p>
+            <p id="stateText">A space for thoughtful learning</p>
           </div>
-          <label class="debug-toggle">
-            <input id="debugToggle" type="checkbox" />
-            Debug
-          </label>
         </header>
 
+        <nav class="learning-progress" aria-label="Learning progress">
+          <span data-step="question" aria-current="step">01 <strong>Question</strong></span>
+          <span data-step="prior">02 <strong>Your thinking</strong></span>
+          <span data-step="retry">03 <strong>Build &amp; revise</strong></span>
+        </nav>
+
         <div id="messages" class="messages" aria-live="polite">
-          <article class="message assistant">
-            <div class="bubble">
-Welcome to Think First, Ask Smart.
-
-This chatbot is designed to help you learn more actively.
-Instead of giving you an immediate final answer, it will first ask what you already know, what you think, or how you would approach the question.
-
-The goal is not to make learning harder.
-The goal is to help you avoid relying too quickly on AI and to strengthen your own thinking.
-
-When you ask a question, be ready to do three things:
-
-1. Explain what you already know.
-2. Share your first guess or reasoning.
-3. Connect your question to learning, educational technology, or research methods when possible.
-
-You do not need to be correct at first.
-Your first attempt helps the chatbot give you better support.
-
-Example questions you may be asked:
-
-"What do you already know about this topic?"
-"How would you explain this in your own words?"
-"What is your initial guess?"
-"How might this relate to learning science or educational technology?"
-"If this were a research question, what evidence would you need?"
-
-The chatbot will guide you step by step, give hints when needed, and help you build a stronger answer after you try first.
-            </div>
+          <article class="welcome">
+            <p class="eyebrow">BEFORE WE BEGIN</p>
+            <h2>Welcome to Think First, Ask Smart.</h2>
+            <p>This chatbot is designed to help you learn more actively. Instead of giving you an immediate final answer, it will first ask what you already know, what you think, or how you would approach the question.</p>
+            <p><strong>The goal is not to make learning harder.</strong> The goal is to help you avoid relying too quickly on AI and to strengthen your own thinking.</p>
+            <h3>When you ask a question, be ready to do three things:</h3>
+            <ol class="welcome-steps">
+              <li>Explain what you already know.</li>
+              <li>Share your first guess or reasoning.</li>
+              <li>Connect your question to learning, educational technology, or research methods when possible.</li>
+            </ol>
+            <p><strong>You do not need to be correct at first.</strong> Your first attempt helps the chatbot give you better support.</p>
+            <h3>Example questions you may be asked:</h3>
+            <ul class="welcome-examples">
+              <li>“What do you already know about this topic?”</li>
+              <li>“How would you explain this in your own words?”</li>
+              <li>“What is your initial guess?”</li>
+              <li>“How might this relate to learning science or educational technology?”</li>
+              <li>“If this were a research question, what evidence would you need?”</li>
+            </ul>
+            <p>The chatbot will guide you step by step, give hints when needed, and help you build a stronger answer after you try first.</p>
+            <section id="startPanel" class="start-panel" aria-label="Before starting">
+              <div id="loggingNotice" class="logging-notice hidden">
+                <h3>Before you start: research data collection</h3>
+                <p id="loggingSummary"></p>
+                <p>Do not enter personal or sensitive information. Your messages are sent to OpenAI to generate replies even if you choose not to save research logs.</p>
+                <label id="consentLine" class="consent-line">
+                  <input id="consentCheckbox" type="checkbox" />
+                  <span id="consentText">I consent to the research data collection described above.</span>
+                </label>
+                <p id="studentIdText" class="student-id"></p>
+              </div>
+              <p id="startStatus" role="status">Checking session settings...</p>
+              <div class="start-actions">
+                <button id="startButton" type="button" disabled>Start conversation</button>
+                <button id="declineButton" type="button" class="secondary hidden">Continue without saving</button>
+              </div>
+            </section>
           </article>
         </div>
 
-        <form id="chatForm" class="composer">
-          <div id="loggingNotice" class="logging-notice hidden">
-            <label id="consentLine" class="consent-line">
-              <input id="consentCheckbox" type="checkbox" />
-              I consent to this prototype storing my chat prompts and timing data for research testing.
-            </label>
-            <p id="loggingSummary">
-              Usage logging is currently off. Do not enter personal or sensitive information.
-            </p>
-            <p id="studentIdText" class="student-id"></p>
-          </div>
+        <form id="chatForm" class="composer hidden">
+          <label id="inputLabel" class="input-label" for="messageInput">Your question</label>
+          <span id="connectionStatus" role="status">Loading conversation...</span>
           <textarea
             id="messageInput"
             rows="2"
-            placeholder="Ask a question, share prior knowledge, retry, or type 'return' to resume a paused topic."
+            placeholder="What would you like to explore?"
             autocomplete="off"
           ></textarea>
-          <button id="sendButton" type="submit">Send</button>
+          <button id="sendButton" type="submit">Send message</button>
         </form>
       </section>
     </main>
-    <script src="app.js" type="module"></script>
+    <noscript>JavaScript is required to send messages.</noscript>
+    <script src="app.js" defer></script>
   </body>
 </html>

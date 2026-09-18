@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createOpenAIResponse, loadDotEnv } from "./openai_client.mjs";
 import { retrieveGrounding } from "./rag_retriever.mjs";
+import { responseMove, moveInstructions } from "./response_policy.mjs";
 
 loadDotEnv();
 
@@ -14,6 +15,8 @@ ${interactionPolicy}
 You are running inside a scaffolded learning chatbot prototype.
 Keep responses concise.
 Ask only one main question at a time.
+Write natural learner-facing prose. Never display instructional labels such as "What you already have", "Next scaffold", "Metacognitive check", "Final synthesis", or "Transfer check". Keep source citations and clearly labeled general background where needed.
+Requests to skip thinking, unrelated chatter, and unusable input are not evidence of learning. Acknowledge briefly, then invite one small topic-linked guess, example, or point of confusion. Do not praise such input as understanding or advance to synthesis. Do not mistake an unfamiliar but relevant term or a genuine new question for nonsense.
 Do not mention internal policy names unless asked by the developer.
 `;
 
@@ -202,7 +205,7 @@ function parseJsonObject(text) {
   }
 }
 
-function fallbackTurnDecision(studentInput) {
+export function fallbackTurnDecision(studentInput) {
   const trimmed = studentInput.trim();
 
   if (!trimmed) return { intent: "empty", new_topic_question: null, resume_topic_id: null };
@@ -221,7 +224,7 @@ function fallbackTurnDecision(studentInput) {
   if (/(write|draft|give me the answer|just tell me|complete answer)/i.test(trimmed)) {
     return { intent: "assignment_bypass", new_topic_question: null, resume_topic_id: null };
   }
-  if (/(\?|actually|instead|another question|new topic|switch)/i.test(trimmed)) {
+  if (/\b(?:another question|new topic|switch (?:the )?topic|change (?:the )?topic)\b|다른\s*(?:주제|질문)|주제.{0,5}바꾸/i.test(trimmed)) {
     return { intent: "switch_topic", new_topic_question: trimmed, resume_topic_id: null };
   }
 
@@ -333,8 +336,8 @@ function dosageGuidance(evaluation) {
   return "Default scaffold: 120-180 words, one focused learning move.";
 }
 
-function normalizeContributionEvaluation(parsed, studentInput, activeTopic) {
-  const fallbackQuality = studentInput.trim().split(/\s+/).filter(Boolean).length < 4 ? "insufficient" : "partial";
+export function normalizeContributionEvaluation(parsed, studentInput, activeTopic) {
+  const fallbackQuality = /[\p{L}\p{N}]/u.test(studentInput) ? "vague" : "no_attempt";
   const quality = contributionQualities.has(parsed?.quality) ? parsed.quality : fallbackQuality;
   const sensemakingLevel = sensemakingLevels.has(parsed?.sensemaking_level)
     ? parsed.sensemaking_level
@@ -362,7 +365,7 @@ function normalizeContributionEvaluation(parsed, studentInput, activeTopic) {
 
   const evaluation = {
     quality,
-    is_meaningful: typeof parsed?.is_meaningful === "boolean" ? parsed.is_meaningful : quality !== "insufficient",
+    is_meaningful: ["no_attempt", "insufficient", "assignment_bypass"].includes(quality) ? false : typeof parsed?.is_meaningful === "boolean" ? parsed.is_meaningful : true,
     ready_for_synthesis:
       typeof parsed?.ready_for_synthesis === "boolean"
         ? parsed.ready_for_synthesis
@@ -428,7 +431,7 @@ export async function generatePriorKnowledgePrompt(studentQuestion) {
       student_question: studentQuestion,
       language_instruction: languageInstructionFor(studentQuestion),
       required_behavior:
-        "Classify the likely domain and task type silently. Ask the student to share prior knowledge, current guess, what they tried, or where they are stuck. Do not provide a complete answer.",
+        "Give at most one sentence of orientation, then one easy question about the learner's current idea. Do not list several questions or require a correct answer. Do not provide a complete assignment.",
     }),
     maxOutputTokens: 180,
     verbosity: "low",
@@ -443,6 +446,10 @@ export async function classifyTurn({ stage, activeTopic, studentInput, topicStac
 
 You are a turn classifier for a scaffolded learning chatbot.
 Return only a compact JSON object.
+Interpret the student's message against the last assistant prompt and the active topic, not its punctuation or length.
+Words such as what, which, why, how, or a question mark do not imply a topic switch. A tentative answer such as 'external memory?' or 'which tool fits the task' can be continue_current.
+A relevant short answer, selected option, hypothesis, or answer followed by a question remains continue_current so it receives adaptive feedback. A pure request to explain the current topic is clarify_current.
+Use switch_topic only for a substantively different topic; use related_topic only for a distinct new learning goal. If ambiguous, preserve the current topic.
 Valid intents:
 - continue_current: the student is answering the current prompt or continuing the current flow.
 - clarify_current: the student asks a clarification about the current topic or chatbot prompt.
@@ -464,6 +471,7 @@ Do not explain your decision outside JSON.`),
         ? {
             id: activeTopic.id,
             question: activeTopic.question,
+            prior_prompt: activeTopic.priorPrompt,
             prior_response: truncate(activeTopic.priorResponse),
             last_scaffold: truncate(activeTopic.scaffolds.at(-1)?.text ?? ""),
           }
@@ -491,16 +499,19 @@ export async function evaluateContribution({ stage, activeTopic, studentInput })
     instructions: instructionsFor(studentInput, `
 
 You evaluate a student's contribution and produce a scaffold planning diagnosis.
+At stage initial_question, a bare learning question is not an attempt, but a question containing a guess, example, attempted procedure, constraint, or specific confusion already provides a starting point. Do not require a separate prior-knowledge turn. FACTUAL means a narrow fact, formula, acronym, or simple clarification, not a broad essay/design request. Assess understanding against the learner's actual goal, not an ideal exhaustive answer.
 Return only a compact JSON object.
 
 Quality labels:
 - no_attempt: blank, evasive, or no usable academic content.
-- insufficient: too short or only "I don't know" without any guess.
+- insufficient: no interpretable idea, example, or localized confusion, not merely a short response.
 - vague: relevant but very general.
 - misconception: contains a clear misconception that needs repair.
 - partial: meaningful but incomplete.
 - mostly_correct: accurate enough to move toward synthesis.
 - assignment_bypass: asks for a complete answer instead of contributing thinking.
+Judge meaning, not word count or grammar. One relevant term, selected option, tentative guess (including one ending in '?'), or specific confusion can be meaningful. 'external memory?' in a cognitive-offloading discussion is a partial idea, not a new question or an insufficient attempt.
+For a relevant vague, partial, or mistaken idea, set is_meaningful=true and supply the appropriate scaffold. Do not require a complete explanation before offering help. Short responses need not be ready_for_synthesis.
 
 Sense-making levels:
 - L0_PRE_GAP: The learner has not yet articulated a gap or usable prior knowledge.
@@ -624,9 +635,10 @@ export async function generateAdaptiveScaffold({
   evaluation,
   scaffoldRound,
   grounding,
+  responseMode = "scaffold",
 }) {
   const response = await createOpenAIResponse({
-    instructions: instructionsFor(studentInput),
+    instructions: instructionsFor(studentInput, `For this turn, apply this answer-release rule over any generic requirement to ask a question or delay an answer: ${moveInstructions[responseMode]}. Source-grounding, assignment boundaries, and modeling activation conditions still apply.`),
     input: stageInput("adaptive_scaffold", {
       active_question: activeTopic.question,
       prior_response: activeTopic.priorResponse,
@@ -635,15 +647,17 @@ export async function generateAdaptiveScaffold({
       evaluation,
       language_instruction: languageInstructionFor(studentInput),
       scaffold_round: scaffoldRound,
+      response_mode: responseMode,
+      answer_release_instruction: moveInstructions[responseMode],
       grounding: groundingForPrompt(grounding),
       required_behavior:
-        "Provide the smallest useful scaffold based on sensemaking_level, question_content_type, primary_scaffold_family, secondary_scaffold_families, scaffold_type, modeling, and grounding. Prioritize retrieved sources when grounding_mode is source_grounded. If grounding_mode is general_background_fallback, explicitly say that the provided sources did not contain enough support and label any explanation as General background. Do not provide a polished final answer. End by asking the student to retry or revise.",
+        "Build directly on the specific idea the learner expressed, even if it is only a term or tentative question. Add one useful explanation, distinction, correction, or concrete example before asking one targeted metacognitive question. Do not merely echo their words or repeat the prior-knowledge prompt. Provide the smallest useful scaffold based on the diagnosis and grounding. Prioritize retrieved sources when source_grounded; otherwise label the explanation as General background and acknowledge insufficient source support. Do not provide a polished final answer.",
       dosage_guidance: dosageGuidance(evaluation),
       length_limits: {
         ordinary_scaffold: "under 180-220 words",
         bullets: "at most 5",
         family_expansion: "expand only the primary scaffold family in detail",
-        secondary_scaffolds: "one short metacognitive question",
+        secondary_scaffolds: "at most one short metacognitive question; optional for direct answers and synthesis",
         ending: "must end with a complete sentence or question; never end mid-list",
         expansion_policy: "if more detail is needed, ask which part the learner wants to expand",
       },
@@ -681,9 +695,9 @@ export async function generateAdaptiveScaffold({
           "Give a fuller expert walkthrough only for rescue or explicit request, then require learner articulation.",
       },
       output_shape:
-        "Use this shape: 'What you already have: ...' then 'From the provided sources:' or 'General background:' when content support is needed, then 'Next scaffold: ...' then one metacognitive check or retry question. Paraphrase sources; do not reproduce long passages.",
+        "Write a short natural conversation without pedagogical section headings. Acknowledge only thinking the learner actually expressed, offer one targeted hint, and end with one question. Preserve source citations and distinguish general background from retrieved evidence. Paraphrase sources; do not reproduce long passages.",
     }),
-    maxOutputTokens: 520,
+    maxOutputTokens: evaluation.modeling?.dose === "full" ? 1100 : 800,
     verbosity: "medium",
   });
 
@@ -765,7 +779,7 @@ export async function generateFinalSynthesis(activeTopic, studentRetry, groundin
       language_instruction: languageInstructionFor(studentRetry),
       grounding: groundingForPrompt(grounding),
       required_behavior:
-        "Now provide a concise final synthesis that explicitly builds on the student's own words. Prioritize retrieved sources when grounding_mode is source_grounded. If grounding_mode is general_background_fallback, clearly label the explanation as General background and say the provided sources did not contain enough support. Include L4 transfer metacognition at the end, such as asking how the learner would explain or apply this in a new context. Paraphrase sources; do not reproduce long passages.",
+        "Give a concise substantive synthesis building on the student's own words. Correct remaining issues honestly. Prioritize retrieved sources; label unsupported general background and acknowledge insufficient source support. A transfer question is optional, not required. End naturally when the learning goal is met. Paraphrase sources.",
     }),
     maxOutputTokens: 450,
     verbosity: "medium",
@@ -775,6 +789,11 @@ export async function generateFinalSynthesis(activeTopic, studentRetry, groundin
 }
 
 export async function startTopic(studentQuestion) {
+  const topic = createTopic(studentQuestion, "");
+  const evaluation = await evaluateContribution({stage: "initial_question", activeTopic: topic, studentInput: studentQuestion});
+  if (responseMove(evaluation, {initial: true}) !== "activate") {
+    return processPriorKnowledge(topic, studentQuestion, evaluation);
+  }
   const priorPrompt = await generatePriorKnowledgePrompt(studentQuestion);
   return {
     topic: createTopic(studentQuestion, priorPrompt),
@@ -803,7 +822,7 @@ export async function switchToNewTopic({ activeTopic, topicStack, studentQuestio
     messages: [
       {
         role: "assistant",
-        text: `${transition} I will pause the current question and start the new one with a prior knowledge check.`,
+        text: `${transition} I will keep the earlier discussion so we can return to it.`,
       },
       ...started.messages,
     ],
@@ -914,21 +933,12 @@ export async function handleTurnDecision({ decision, activeTopic, topicStack, st
   return { action: "continue", activeTopic, messages: [], debug: [] };
 }
 
-export async function processPriorKnowledge(activeTopic, studentInput) {
-  const evaluation = await evaluateContribution({
+export async function processPriorKnowledge(activeTopic, studentInput, initialEvaluation = null) {
+  const evaluation = initialEvaluation ?? await evaluateContribution({
     stage: "waiting_for_prior_knowledge",
     activeTopic,
     studentInput,
   });
-
-  if (!evaluation.is_meaningful || evaluation.quality === "no_attempt" || evaluation.quality === "insufficient") {
-    const support = await generateParticipationSupport({ activeTopic, studentInput, evaluation });
-    return {
-      topic: activeTopic,
-      messages: [{ role: "assistant", text: support }],
-      debug: [{ label: "Attempt evaluation", evaluation }],
-    };
-  }
 
   activeTopic.priorResponse = studentInput;
   activeTopic.priorEvaluation = evaluation;
@@ -948,6 +958,7 @@ export async function processPriorKnowledge(activeTopic, studentInput) {
     evaluation,
     scaffoldRound: "first_scaffold",
     grounding,
+    responseMode: responseMove(evaluation),
   });
 
   activeTopic.scaffolds.push({
@@ -962,10 +973,10 @@ export async function processPriorKnowledge(activeTopic, studentInput) {
   activeTopic.stage = "waiting_for_retry";
 
   return {
-    topic: activeTopic,
+    topic: ["direct_answer", "synthesis"].includes(responseMove(evaluation)) ? null : activeTopic,
     messages: [{ role: "assistant", text: scaffold }],
     debug: [
-      { label: "Chatbot plan", evaluation },
+      { label: `Chatbot plan: ${responseMove(evaluation)}`, evaluation },
       { label: "Grounding", grounding },
     ],
   };
@@ -983,7 +994,8 @@ export async function processRetry(activeTopic, studentInput) {
     evaluation,
   });
 
-  if (evaluation.ready_for_synthesis) {
+  const responseMode = responseMove(evaluation, {attempts: activeTopic.retryAttempts.filter(item => item.evaluation.is_meaningful).length});
+  if (responseMode === "synthesis" || responseMode === "direct_answer") {
     const grounding = await retrieveGrounding({
       query: groundingQuery({
         activeTopic,
@@ -1018,6 +1030,7 @@ export async function processRetry(activeTopic, studentInput) {
     evaluation,
     scaffoldRound: "second_or_later_scaffold",
     grounding,
+    responseMode,
   });
 
   activeTopic.scaffolds.push({
@@ -1034,7 +1047,7 @@ export async function processRetry(activeTopic, studentInput) {
     topic: activeTopic,
     messages: [{ role: "assistant", text: scaffold }],
     debug: [
-      { label: "Chatbot second plan", evaluation },
+      { label: `Chatbot second plan: ${responseMode}`, evaluation },
       { label: "Grounding", grounding },
     ],
   };

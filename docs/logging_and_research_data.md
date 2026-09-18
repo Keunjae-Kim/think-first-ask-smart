@@ -1,5 +1,7 @@
 # Usage Logging And Research Data
 
+The welcome screen now asks for a logging choice before opening the conversation. Checking consent and starting permits collection; continuing without saving sends consent=false and never writes research logs, even under a legacy REQUIRE_LOG_CONSENT=false setting. Messages are still processed by the model provider. The checkbox is a prototype collection choice, not a complete institutional study consent form.
+
 The browser prototype can save local JSONL usage logs for research testing.
 
 Because learner prompts can contain private information, logging is disabled by default. Enable it only after your consent, IRB, or ethics review procedures are ready.
